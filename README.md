@@ -98,12 +98,46 @@ python gitlab_migration.py --source-url https://gitlab.example.com \
 
 ## 故障排除
 
+### 很可能出现的问题
+#### 上传文件过大
+
+gitlab的默认配置，在项目迁移过程中，会出现上传文件过大出现413错误，导致迁移失败
+解决方法：
+1. 增加`--timeout`参数的值，默认30秒，根据实际情况调整
+2. 调整目标GitLab实例的配置，增加上传文件大小的限制
+    调整gitlab的配置，通常在/etc/gitlab/gitlab.rb中，添加以下配置：
+```bash
+# 设置项目导入的最大大小（单位：MB，默认通常是 500MB）
+gitlab_rails['max_import_size'] = 2048  # 例如设置为 2GB
+# 在 gitlab.rb 中添加或修改
+nginx['client_max_body_size'] = '2048m'  # 与 max_import_size 保持一致或更大
+
+sudo gitlab-ctl reconfigure  # 重新生成配置
+sudo gitlab-ctl restart      # 重启服务
+```
+3. 若2中的配置无效，通常是rails配置未生效导致的，可以尝试下面的方法：
+```bash
+# 进入 GitLab Rails 控制台
+sudo gitlab-rails console  #  等待控制台加载完成（可能需要 10-30 秒）
+
+# 读取当前设置（确认是否为 50）
+setting = ApplicationSetting.current
+puts "当前最大导入大小：#{setting.max_import_size} MB"
+
+# 更新为目标值（例如 2000MB）
+setting.update!(max_import_size: 2000)
+
+# 确认更新
+puts "更新后的最大导入大小：#{setting.max_import_size} MB"
+```
+
 ### 常见错误
 
 1. **认证失败**：请检查访问令牌是否正确，以及是否具有足够的权限
 2. **SSL验证错误**：如果目标GitLab使用自签名证书，可以使用`--verify-ssl false`参数
 3. **导出/导入超时**：对于大型项目，可以尝试增加`--timeout`参数的值
 4. **项目冲突**：如果目标群组中已存在同名项目，迁移将会失败
+5. **导出/导入频率太高**：如果在短时间内进行多次导出/导入操作，可能会触发GitLab的频率限制。可以在gitlab管理中心-设置-网络-导入/导出速率限制中调整限制值。
 
 ### 获取帮助
 
